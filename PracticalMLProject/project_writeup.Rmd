@@ -1,0 +1,110 @@
+---
+title: Practical Machine Learning Project
+author: "by Paul Amazona"
+output:
+  html_document:
+    fig_height: 9
+    fig_width: 9
+---
+
+## Background  
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+```{r, cache = T, echo=FALSE}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+```
+### Data Retrieval
+```{r, cache = T}
+rawTrainData <- read.csv("./data/pml-training.csv")
+rawTestData <- read.csv("./data/pml-testing.csv")
+dim(rawTrainData)
+dim(rawTestData)
+```
+Our training data has
+    19622 observations
+    160 variables
+Our testing data has 
+    20 observations
+    160 variables. 
+
+What to predict: "classe" variable
+
+
+### Data Cleaning
+Rows with missing values will be removed as well as unnecessary features.
+```{r, cache = T, echo=FALSE}
+sum(complete.cases(rawTrainData))
+
+rawTrainData <- rawTrainData[, colSums(is.na(rawTrainData)) == 0] 
+rawTestData <- rawTestData[, colSums(is.na(rawTestData)) == 0] 
+
+classe <- rawTrainData$classe
+trainRemove <- grepl("^X|timestamp|window", names(rawTrainData))
+rawTrainData <- rawTrainData[, !trainRemove]
+cleanTrainData <- rawTrainData[, sapply(rawTrainData, is.numeric)]
+cleanTrainData$classe <- classe
+testRemove <- grepl("^X|timestamp|window", names(rawTestData))
+rawTestData <- rawTestData[, !testRemove]
+testCleaned <- rawTestData[, sapply(rawTestData, is.numeric)]
+```
+After cleanup:
+
+Our training data has
+    19622 observations
+    53 variables
+Our testing data has 
+    20 observations
+    53 variables. 
+    
+### Split data into training (70%) and validation(30%) set. 
+The validation set will be used for cross verification later.
+```{r, cache = T}
+set.seed(90831)
+inTrain <- createDataPartition(cleanTrainData$classe, p=0.70, list=F)
+trainingData <- cleanTrainData[inTrain, ]
+testData <- cleanTrainData[-inTrain, ]
+```
+
+## Apply the Model
+We'll use randomforest and 5-fold validation for cross validation.
+```{r, cache = T}
+controlRandomForest <- trainControl(method="cv", 5)
+modelRandomForest <- train(classe ~ ., data=trainingData, method="rf", trControl=controlRandomForest, ntree=250)
+modelRandomForest
+```
+Estimation of Model Performance:
+```{r, cache = T}
+rfPredictions <- predict(modelRandomForest, testData)
+confusionMatrix(testData$classe, rfPredictions)
+```
+```{r, cache = T}
+modelAccuracy <- postResample(rfPredictions, testData$classe)
+modelAccuracy
+outOfSampleError <- 1 - as.numeric(confusionMatrix(testData$classe, rfPredictions)$overall[1])
+outOfSampleError
+```
+Estimated modelAccuracy of the model is 99.22% and the estimated out-of-sample error is 0.007816
+
+## Test Data Predictions
+```{r, cache = T}
+outcome <- predict(modelRandomForest, testCleaned[, -length(names(testCleaned))])
+outcome
+```  
+
+## Figures for Reference
+Correlation Matrix
+```{r, cache = T}
+correlationPlot <- cor(trainingData[, -length(names(trainingData))])
+corrplot(correlationPlot, method="color")
+```
+Decision Tree
+```{r, cache = T}
+treeM <- rpart(classe ~ ., data=trainingData, method="class")
+prp(treeM) # fast plot
+```
